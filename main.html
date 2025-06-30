@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Lab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a, #1a1a2e, #16213e);
+            color: #00ffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .game-info {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+
+        .lab-canvas {
+            border: 3px solid #00ffff;
+            border-radius: 10px;
+            background: radial-gradient(circle at center, #001122, #000011);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+            position: relative;
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .control-btn {
+            padding: 12px 20px;
+            background: linear-gradient(45deg, #2a2a3e, #3a3a5e);
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: linear-gradient(45deg, #3a3a5e, #4a4a7e);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .particle-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00ffff;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .objectives {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ffff;
+            border-radius: 8px;
+            padding: 15px;
+            min-width: 200px;
+        }
+
+        .objective-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .objective-complete {
+            background: rgba(0, 255, 0, 0.2);
+            color: #00ff00;
+        }
+
+        .objective-incomplete {
+            background: rgba(255, 255, 0, 0.2);
+            color: #ffff00;
+        }
+
+        .energy-bar {
+            width: 300px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #00ffff;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .energy-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00);
+            transition: width 0.5s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .pulsing {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1 class="title">QUANTUM LAB</h1>
+            <div class="game-info">
+                <div>Level: <span id="level">1</span></div>
+                <div>Score: <span id="score">0</span></div>
+                <div>Particles: <span id="particle-count">0</span></div>
+            </div>
+            <div class="energy-bar">
+                <div class="energy-fill" id="energy-fill" style="width: 100%"></div>
+            </div>
+            <div>System Energy: <span id="energy-value">100</span>%</div>
+        </div>
+
+        <canvas id="lab-canvas" class="lab-canvas" width="800" height="600"></canvas>
+
+        <div class="controls">
+            <button class="control-btn" onclick="addParticle('electron')">Add Electron (-)</button>
+            <button class="control-btn" onclick="addParticle('proton')">Add Proton (+)</button>
+            <button class="control-btn" onclick="addParticle('neutron')">Add Neutron (0)</button>
+            <button class="control-btn" onclick="toggleField('magnetic')">Magnetic Field</button>
+            <button class="control-btn" onclick="toggleField('electric')">Electric Field</button>
+            <button class="control-btn" onclick="resetLab()">Reset Lab</button>
+            <button class="control-btn" onclick="nextLevel()">Next Level</button>
+        </div>
+
+        <div class="particle-info">
+            <div>Click to add particles • Particles interact based on charge • Achieve objectives to progress</div>
+        </div>
+
+        <div class="objectives" id="objectives">
+            <h3>Objectives:</h3>
+            <div id="objective-list"></div>
+        </div>
+    </div>
+
+    <script>
+        class QuantumLab {
+            constructor() {
+                this.canvas = document.getElementById('lab-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.fields = {
+                    magnetic: false,
+                    electric: false
+                };
+                this.level = 1;
+                this.score = 0;
+                this.energy = 100;
+                this.selectedParticleType = 'electron';
+                this.objectives = [];
+                this.animationId = null;
+                
+                this.initLevel();
+                this.setupEventListeners();
+                this.gameLoop();
+            }
+
+            initLevel() {
+                this.particles = [];
+                this.energy = 100;
+                this.updateObjectives();
+                this.updateDisplay();
+            }
+
+            setupEventListeners() {
+                this.canvas.addEventListener('click', (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    this.addParticleAt(x, y, this.selectedParticleType);
+                });
+            }
+
+            addParticleAt(x, y, type) {
+                if (this.energy < 10) return;
+
+                const particle = {
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    type: type,
+                    charge: type === 'electron' ? -1 : type === 'proton' ? 1 : 0,
+                    mass: type === 'electron' ? 1 : type === 'proton' ? 1836 : 1839,
+                    radius: type === 'electron' ? 4 : type === 'proton' ? 6 : 5,
+                    color: type === 'electron' ? '#00ffff' : type === 'proton' ? '#ff6b6b' : '#ffd93d',
+                    trail: [],
+                    energy: Math.random() * 50 + 25
+                };
+
+                this.particles.push(particle);
+                this.energy -= 10;
+                this.updateDisplay();
+            }
+
+            updatePhysics() {
+                const dt = 0.016; // ~60fps
+                const k = 0.1; // Coulomb constant (scaled)
+
+                // Update particle positions and handle interactions
+                for (let i = 0; i < this.particles.length; i++) {
+                    const p1 = this.particles[i];
+                    
+                    // Add current position to trail
+                    p1.trail.push({x: p1.x, y: p1.y});
+                    if (p1.trail.length > 20) p1.trail.shift();
+
+                    // Reset forces
+                    let fx = 0, fy = 0;
+
+                    // Particle-particle interactions
+                    for (let j = 0; j < this.particles.length; j++) {
+                        if (i === j) continue;
+                        const p2 = this.particles[j];
+                        
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance > 0 && distance < 200) {
+                            // Coulomb force
+                            const force = k * p1.charge * p2.charge / (distance * distance);
+                            const forceX = -force * dx / distance;
+                            const forceY = -force * dy / distance;
+                            
+                            fx += forceX;
+                            fy += forceY;
+                        }
+                    }
+
+                    // Apply fields
+                    if (this.fields.electric) {
+                        fx += p1.charge * 0.1;
+                    }
+                    if (this.fields.magnetic && p1.charge !== 0) {
+                        // Magnetic force perpendicular to velocity
+                        const magneticForce = 0.05 * p1.charge;
+                        fx += -p1.vy * magneticForce;
+                        fy += p1.vx * magneticForce;
+                    }
+
+                    // Update velocity
+                    p1.vx += fx / p1.mass * dt;
+                    p1.vy += fy / p1.mass * dt;
+
+                    // Add some damping
+                    p1.vx *= 0.999;
+                    p1.vy *= 0.999;
+
+                    // Update position
+                    p1.x += p1.vx;
+                    p1.y += p1.vy;
+
+                    // Boundary conditions
+                    if (p1.x < p1.radius || p1.x > this.canvas.width - p1.radius) {
+                        p1.vx *= -0.8;
+                        p1.x = Math.max(p1.radius, Math.min(this.canvas.width - p1.radius, p1.x));
+                    }
+                    if (p1.y < p1.radius || p1.y > this.canvas.height - p1.radius) {
+                        p1.vy *= -0.8;
+                        p1.y = Math.max(p1.radius, Math.min(this.canvas.height - p1.radius, p1.y));
+                    }
+                }
+
+                this.checkObjectives();
+            }
+
+            render() {
+                // Clear canvas with fade effect
+                this.ctx.fillStyle = 'rgba(0, 1, 17, 0.1)';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Draw field effects
+                if (this.fields.electric) {
+                    this.drawElectricField();
+                }
+                if (this.fields.magnetic) {
+                    this.drawMagneticField();
+                }
+
+                // Draw particles and trails
+                for (const particle of this.particles) {
+                    // Draw trail
+                    this.ctx.strokeStyle = particle.color + '40';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    for (let i = 1; i < particle.trail.length; i++) {
+                        const opacity = i / particle.trail.length;
+                        this.ctx.globalAlpha = opacity * 0.5;
+                        if (i === 1) {
+                            this.ctx.moveTo(particle.trail[i].x, particle.trail[i].y);
+                        } else {
+                            this.ctx.lineTo(particle.trail[i].x, particle.trail[i].y);
+                        }
+                    }
+                    this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
+
+                    // Draw particle
+                    this.ctx.fillStyle = particle.color;
+                    this.ctx.shadowColor = particle.color;
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.beginPath();
+                    this.ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0;
+
+                    // Draw charge indicator
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.font = '12px Courier New';
+                    this.ctx.textAlign = 'center';
+                    const chargeText = particle.charge > 0 ? '+' : particle.charge < 0 ? '-' : '0';
+                    this.ctx.fillText(chargeText, particle.x, particle.y + 3);
+                }
+            }
+
+            drawElectricField() {
+                this.ctx.strokeStyle = '#ffff0040';
+                this.ctx.lineWidth = 1;
+                for (let x = 0; x < this.canvas.width; x += 40) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x + 20, this.canvas.height);
+                    this.ctx.stroke();
+                }
+            }
+
+            drawMagneticField() {
+                this.ctx.fillStyle = '#ff00ff20';
+                for (let x = 20; x < this.canvas.width; x += 40) {
+                    for (let y = 20; y < this.canvas.height; y += 40) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(x, y, 3, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
+            }
+
+            updateObjectives() {
+                const objectives = [
+                    {
+                        id: 'particles',
+                        text: `Create ${this.level * 3} particles`,
+                        check: () => this.particles.length >= this.level * 3,
+                        complete: false
+                    },
+                    {
+                        id: 'stable',
+                        text: 'Maintain stable system for 5 seconds',
+                        check: () => this.isSystemStable(),
+                        complete: false,
+                        timer: 0
+                    },
+                    {
+                        id: 'energy',
+                        text: 'Keep energy above 20%',
+                        check: () => this.energy > 20,
+                        complete: false
+                    }
+                ];
+
+                this.objectives = objectives;
+                this.updateObjectiveDisplay();
+            }
+
+            checkObjectives() {
+                let allComplete = true;
+                
+                for (const objective of this.objectives) {
+                    if (objective.check()) {
+                        if (objective.id === 'stable') {
+                            objective.timer += 0.016;
+                            if (objective.timer >= 5) {
+                                objective.complete = true;
+                            }
+                        } else {
+                            objective.complete = true;
+                        }
+                    } else {
+                        if (objective.id === 'stable') {
+                            objective.timer = 0;
+                        }
+                        allComplete = false;
+                    }
+                }
+
+                if (allComplete && this.objectives.every(obj => obj.complete)) {
+                    this.score += this.level * 100;
+                    this.updateDisplay();
+                    setTimeout(() => this.nextLevel(), 1000);
+                }
+
+                this.updateObjectiveDisplay();
+            }
+
+            isSystemStable() {
+                if (this.particles.length < 2) return false;
+                
+                const avgSpeed = this.particles.reduce((sum, p) => 
+                    sum + Math.sqrt(p.vx * p.vx + p.vy * p.vy), 0) / this.particles.length;
+                
+                return avgSpeed < 2;
+            }
+
+            updateObjectiveDisplay() {
+                const list = document.getElementById('objective-list');
+                list.innerHTML = '';
+                
+                for (const objective of this.objectives) {
+                    const div = document.createElement('div');
+                    div.className = `objective-item ${objective.complete ? 'objective-complete' : 'objective-incomplete'}`;
+                    let text = objective.text;
+                    if (objective.id === 'stable' && !objective.complete) {
+                        text += ` (${(5 - objective.timer).toFixed(1)}s)`;
+                    }
+                    div.textContent = `${objective.complete ? '✓' : '○'} ${text}`;
+                    list.appendChild(div);
+                }
+            }
+
+            updateDisplay() {
+                document.getElementById('level').textContent = this.level;
+                document.getElementById('score').textContent = this.score;
+                document.getElementById('particle-count').textContent = this.particles.length;
+                document.getElementById('energy-value').textContent = Math.round(this.energy);
+                document.getElementById('energy-fill').style.width = `${Math.max(0, this.energy)}%`;
+            }
+
+            gameLoop() {
+                this.updatePhysics();
+                this.render();
+                this.animationId = requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+
+        // Game instance
+        let game;
+
+        // Control functions
+        function addParticle(type) {
+            game.selectedParticleType = type;
+        }
+
+        function toggleField(field) {
+            game.fields[field] = !game.fields[field];
+        }
+
+        function resetLab() {
+            game.initLevel();
+        }
+
+        function nextLevel() {
+            game.level++;
+            game.initLevel();
+        }
+
+        // Initialize game when page loads
+        window.addEventListener('load', () => {
+            game = new QuantumLab();
+        });
+    </script>
+</body>
+</html>
